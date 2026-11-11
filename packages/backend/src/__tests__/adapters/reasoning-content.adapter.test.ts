@@ -81,6 +81,63 @@ describe('reasoningContentAdapter', () => {
       const payload = { model: 'foo' };
       expect(reasoningContentAdapter.preDispatch(payload)).toEqual({ model: 'foo' });
     });
+
+    describe('fillMissing option', () => {
+      it('fills absent reasoning_content with an empty string when enabled', () => {
+        // Mirrors the DeepSeek thinking-mode rejection: a history where some
+        // assistant turns carry reasoning and others carry none at all.
+        const payload = {
+          tools: [{ type: 'function', function: { name: 'noop' } }],
+          messages: [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: 'go' },
+            { role: 'assistant', content: '', tool_calls: [{ id: 'c1' }] },
+            { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+            { role: 'assistant', content: '', reasoning: 'real thought' },
+          ],
+        };
+
+        const result = reasoningContentAdapter.preDispatch(payload, { fillMissing: true });
+
+        const assistants = result.messages.filter((m: any) => m.role === 'assistant');
+        expect(assistants).toHaveLength(2);
+        for (const message of assistants) {
+          expect(typeof message.reasoning_content).toBe('string');
+        }
+        // missing reasoning becomes an empty string
+        expect(assistants[0].reasoning_content).toBe('');
+        // real reasoning is preserved, not overwritten, and the legacy field is removed
+        expect(assistants[1].reasoning_content).toBe('real thought');
+        expect(assistants[1].reasoning).toBeUndefined();
+        // non-assistant messages are untouched
+        expect(result.messages[0]).toEqual({ role: 'system', content: 'sys' });
+        expect(result.messages[3]).toEqual({ role: 'tool', tool_call_id: 'c1', content: 'ok' });
+      });
+
+      it('is off by default and leaves absent reasoning_content absent', () => {
+        const payload = { messages: [{ role: 'assistant', content: 'hi' }] };
+        const result = reasoningContentAdapter.preDispatch(payload);
+        expect('reasoning_content' in result.messages[0]).toBe(false);
+      });
+
+      it('treats a null reasoner as missing and fills it', () => {
+        const payload = {
+          messages: [
+            { role: 'assistant', content: '', reasoning: null },
+            { role: 'assistant', content: '', reasoning_content: null },
+          ],
+        };
+
+        const result = reasoningContentAdapter.preDispatch(payload, { fillMissing: true });
+
+        expect(result.messages[0].reasoning_content).toBe('');
+        expect(result.messages[1].reasoning_content).toBe('');
+        // the legacy fields must not survive: providers that reject
+        // `messages[N].reasoning` would fail on them just as before
+        expect(result.messages[0].reasoning).toBeUndefined();
+        expect(result.messages[1].reasoning).toBeUndefined();
+      });
+    });
   });
 
   // ── postDispatch ─────────────────────────────────────────────────────────
