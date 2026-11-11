@@ -311,7 +311,12 @@ properties:
 
       - `reasoning_content` — Renames `reasoning`/`thinking.content` →
         `reasoning_content` on outbound assistant messages. Fixes Fireworks/
-        DeepSeek providers that reject the `reasoning` field name.
+        DeepSeek providers that reject the `reasoning` field name. Accepts
+        `{ "fillMissing": true }` in options to also guarantee the field on
+        assistant messages that carry no reasoning (sent as `""`), for
+        providers that reject a history where any assistant turn omits it —
+        e.g. DeepSeek thinking mode. Existing values are preserved; off by
+        default.
 
       - `suppress_developer_role` — Rewrites the `developer` role to `system`
         for providers that do not support the OpenAI `developer` role.
